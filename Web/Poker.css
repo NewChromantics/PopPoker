@@ -55,10 +55,10 @@ body
 	margin-left:	1em;
 }
 
-#Variables div[innerText$="1"]:after	{	content:	"HEART " attr(innerText);	}
-#Variables div[innerText$="2"]:after	{	content:	"SPADE " attr(innerText);	}
-#Variables div[innerText$="3"]:after	{	content:	"DIAMOND " attr(innerText);	}
-#Variables div[innerText$="4"]:after	{	content:	"CLUB " attr(innerText);	}
+#Variables div[innerText$="1"]:after	{	content:	"\2665 " attr(innerText);	color:	red;	}
+#Variables div[innerText$="2"]:after	{	content:	"\2660 " attr(innerText);	color:	black;	}
+#Variables div[innerText$="3"]:after	{	content:	"\2666 " attr(innerText);	color:	red;	}
+#Variables div[innerText$="4"]:after	{	content:	"\2663 " attr(innerText);	color:	black;	}
 
 #Variables div:not([id*="Card"]):after
 {
@@ -66,7 +66,8 @@ body
 }
 
 /*#Variables div:not([id*="Bet"]):after*/
-#Variables div[innerText="-1"]:after
+/* any negative is a fold */
+#Variables div[innerText*="-"]:after
 {
 	content:	"FOLD";
 	background:	#fcc;

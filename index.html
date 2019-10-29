@@ -95,7 +95,7 @@
 			return Cards;
 		}
 	
-		const BET_FOLD = -1;
+	
 		const SMALL_BLIND = 5;
 		const BIG_BLIND = SMALL_BLIND*2;
 		const SUIT_HEART = 1;
@@ -118,7 +118,7 @@
 				let Bet = 0;
 				Bet = Math.max( Bet, this.P1Bet );
 				Bet = Math.max( Bet, this.P2Bet );
-				Bet = Math.max( Bet, this.P2Bet );
+				Bet = Math.max( Bet, this.P3Bet );
 				return Bet;
 			}
 			
@@ -161,6 +161,18 @@
 		function CompareDescending(a,b)
 		{
 			return b-a;
+		}
+	
+		function IsBetFold(Bet)
+		{
+			//	-1 == -0
+			//	anything else negative is how much they lost into the pot
+			return Bet < 0;
+		}
+	
+		function IsBetNotFold(Bet)
+		{
+			return !IsBetFold(Bet);
 		}
 	
 		async function WaitForSync(State)
@@ -589,26 +601,36 @@
 			throw "Shouldn't reach here, GetHighCardHand should always give a result";
 		}
 	
+		function GetPlayerState(State,Player)
+		{
+			const Card0 = State['P'+Player+'Card0'];
+			const Card1 = State['P'+Player+'Card0'];
+			const Bet = State['P'+Player+'Bet'];
+
+			let Cards = [ Card0, Card1, State.RiverCard0, State.RiverCard1, State.RiverCard2, State.RiverCard3, State.RiverCard4 ];
+			const Hand = {};
+			Hand.Player = Player;
+			Hand.Cards = Cards;
+			Hand.BestHand = GetBestHand(Cards);
+			Hand.Bet = Bet;
+			return Hand;
+		}
 	
 		function GetWinner(State)
 		{
 			//	get cards of those who havent folded
 			let Hands = [];
 			
-			function PushHand(Player,Bet,Card0,Card1)
+			function PushHand(Player)
 			{
-				if ( Bet == BET_FOLD )
+				const PlayerState = GetPlayerState(State,Player);
+				if ( IsBetFold(PlayerState.Bet) )
 					return;
-				let Cards = [ Card0, Card1, State.RiverCard0, State.RiverCard1, State.RiverCard2, State.RiverCard3, State.RiverCard4 ];
-				const Hand = {};
-				Hand.Player = Player;
-				Hand.Cards = Cards;
-				Hand.BestHand = GetBestHand(Cards);
-				Hands.push(Hand);
+				Hands.push(PlayerState);
 			}
-			PushHand( 1, State.P1Bet, State.P1Card0, State.P1Card1 );
-			PushHand( 2, State.P2Bet, State.P2Card0, State.P2Card1 );
-			PushHand( 3, State.P3Bet, State.P3Card0, State.P3Card1 );
+			PushHand( 1 );
+			PushHand( 2 );
+			PushHand( 3 );
 			
 			if ( Hands.length == 0 )
 				throw "Everyone folded, unexpected state";
@@ -616,6 +638,13 @@
 			Hands.sort( CompareBestHands );
 			//	todo: check for everyone using river cards & tie
 			return Hands[0];
+		}
+	
+	
+		async function ShowNewGame(State)
+		{
+			const StateElement = document.getElementById('GameResult');
+			StateElement.innerHTML = '';
 		}
 	
 		async function ShowWinner(State)
@@ -628,6 +657,32 @@
 			StateElement.innerHTML = 'Winner is ' + Winner.Player + "<br/>";
 			StateElement.innerHTML += 'With ' + GetHandToString(Winner.BestHand) + "<br/>";
 			StateElement.innerHTML += 'Wins $' + Prize + "<br/>";
+			StateElement.innerHTML += "<br/>";
+
+			function GetLoserSummary(Player)
+			{
+				const PlayerState = GetPlayerState(State,Player);
+				let Loss = PlayerState.Bet;
+				if ( !IsBetFold(Loss) )
+				{
+					//	gr: this will always be zero. running loss/bet is not in state
+					Loss = -Loss;
+				}
+				else if ( Loss == -1 )
+				{
+					Loss = 0;
+				}
+				let Summary = "Player " + Player + " lost $" + Loss + "<br/>";
+				Summary += "With " + GetHandToString( PlayerState.BestHand );
+				return Summary;
+			}
+			
+			if ( Winner.Player != 1 )
+				StateElement.innerHTML += GetLoserSummary(1) + "<br/><br/>";
+			if ( Winner.Player != 2 )
+				StateElement.innerHTML += GetLoserSummary(2) + "<br/><br/>";
+			if ( Winner.Player != 3 )
+				StateElement.innerHTML += GetLoserSummary(3) + "<br/><br/>";
 
 			await WaitForSync();
 		}
@@ -677,6 +732,7 @@
 		{
 			const State = new PokerGameState();
 			OnStateChanged( State );
+			await ShowNewGame(State);
 
 			await WaitForSync(State);
 			
@@ -700,12 +756,19 @@
 			return State;
 		}
 	
+		function GetStateBettingPlayerCount(State)
+		{
+			let Bets = [State.P1Bet,State.P2Bet,State.P3Bet];
+			Bets = Bets.filter( IsBetNotFold );
+			
+			return Bets.length;
+		}
+	
 		function StateNeedsBet(State)
 		{
 			//	if any player is less bet than others and not folded
 			let Bets = [State.P1Bet,State.P2Bet,State.P3Bet];
-			function BetNotFold(Bet)	{	return Bet!=-1;	}
-			Bets = Bets.filter( BetNotFold );
+			Bets = Bets.filter( IsBetNotFold );
 			if ( Bets.length == 0 )
 				throw "Nobody valid for betting";
 			
@@ -720,12 +783,21 @@
 	
 		async function GetPlayerAction(State,PXBet)
 		{
-			//const Actions = ['FOLD','CALL','RAISE'];
-			const Actions = ['CALL','RAISE'];
+			const Actions =
+			[
+				'FOLD',
+			 	'CALL','CALL','CALL','CALL','CALL','CALL','CALL','CALL',
+			 	'RAISE','RAISE','RAISE','RAISE'
+			];
 			
 			//	already folded
-			if ( State[PXBet] == BET_FOLD )
+			if ( IsBetFold(State[PXBet]) )
 				return 'FOLD';//Actions[0];
+	
+			//	if everyone else folded, just call
+			const PlayerCount = GetStateBettingPlayerCount(State);
+			if ( PlayerCount == 1 )
+				return 'CALL';
 	
 			//	pick random action
 			//	fold, call, raise
@@ -743,10 +815,12 @@
 			if ( Action == 'FOLD' )
 			{
 				//	already folded
-				if ( State[PXBet] == BET_FOLD )
+				if ( IsBetFold(State[PXBet]) )
 					return;
+				//	when bet is negative, it's everything we've lost
+				//	-1 is a special case where it's a fold, but lost nothing (-0)
 				State.Pot += State[PXBet];
-				State[PXBet] = BET_FOLD;
+				State[PXBet] = Math.min( -1, -State[PXBet] );
 				return;
 			}
 			
@@ -763,6 +837,7 @@
 				State[PXBet] = State.GetHighestBet() + BIG_BLIND;
 				return;
 			}
+			throw "Unhandled action " + Action;
 		}
 		function ApplyPlayer1Action(State,Action)	{	return ApplyPlayerAction(State,Action,'P1Bet');	}
 		function ApplyPlayer2Action(State,Action)	{	return ApplyPlayerAction(State,Action,'P2Bet');	}
@@ -774,8 +849,8 @@
 			State.Pot += Math.max( 0, State.P2Bet );
 			State.Pot += Math.max( 0, State.P3Bet );
 			State.P1Bet = Math.min( State.P1Bet, 0 );
-			State.P2Bet = Math.min( State.P1Bet, 0 );
-			State.P3Bet = Math.min( State.P1Bet, 0 );
+			State.P2Bet = Math.min( State.P2Bet, 0 );
+			State.P3Bet = Math.min( State.P3Bet, 0 );
 		}
 		
 		async function UpdateRound(State)
@@ -797,6 +872,7 @@
 			while ( StateNeedsBet(State) )
 			
 			FlushBets(State);
+			OnStateChanged(State);
 		}
 	
 	
