@@ -20,7 +20,7 @@
 <body>
 	
 	<div id="Variables">
-		<h1>Variables</h1>
+		<h1>State</h1>
 		<!-- variables -->
 		<div id="Pot">0</div>
 		<div id="RiverCard0">0</div>
@@ -855,6 +855,9 @@
 		
 		async function UpdateRound(State)
 		{
+			FlushBets(State);
+			OnStateChanged(State);
+			
 			RevealNextCard(State);
 			OnStateChanged(State);
 			do
@@ -870,9 +873,6 @@
 				OnStateChanged(State);
 			}
 			while ( StateNeedsBet(State) )
-			
-			FlushBets(State);
-			OnStateChanged(State);
 		}
 	
 	
