@@ -12,6 +12,14 @@ body
 	background-attachment: fixed;
 }
 */
+
+#Variables, #Ux
+{
+	width:		33vw;
+	display:	inline-block;
+	vertical-align: top;
+}
+
 #Variables div
 {
 	margin-bottom:	0.5em;

@@ -41,8 +41,11 @@
 	</div>
 	
 	<div id="Ux">
+		<h1>Ux</h1>
 		<div>Continue <input type=Button id="Ux_Continue" value="Continue"/></div>
+		<div id="GameResult"></div>
 	</div>
+	
 	
 	<script>
 		function SetInnerTextAttr(Element)
@@ -95,6 +98,10 @@
 		const BET_FOLD = -1;
 		const SMALL_BLIND = 5;
 		const BIG_BLIND = SMALL_BLIND*2;
+		const SUIT_HEART = 1;
+		const SUIT_SPADE = 2;
+		const SUIT_DIAMOND = 3;
+		const SUIT_CLUB = 4;
 
 		function PokerGameState()
 		{
@@ -146,6 +153,7 @@
 			return NewPromise;
 		}
 	
+	
 		async function WaitForSync(State)
 		{
 			const ContinueButton = document.getElementById('Ux_Continue');
@@ -156,6 +164,331 @@
 				ContinueButton.onclick = undefined;
 			}
 			await ContinuePromise;
+		}
+	
+		function GetCardValue(Card)
+		{
+			return Math.floor( Card / 10 );
+		}
+	
+		function GetCardSuit(Card)
+		{
+			const Suit = (Card % 10);
+			if ( Suit == 0 )
+				throw "Invalid card";
+			return Suit;
+		}
+	
+		function IsHeart(Card)		{	return GetCardSuit(Card) == SUIT_HEART;		}
+		function IsClub(Card)		{	return GetCardSuit(Card) == SUIT_CLUB;		}
+		function IsSpade(Card)		{	return GetCardSuit(Card) == SUIT_SPADE;		}
+		function IsDiamond(Card)	{	return GetCardSuit(Card) == SUIT_DIAMOND;		}
+
+		function GetSortedFiveCards(Cards)
+		{
+			function Compare(a,b)
+			{
+				const va = GetCardValue(a);
+				const vb = GetCardValue(b);
+				if ( va > vb )	return -1;
+				if ( va < vb )	return 1;
+				return 0;
+			}
+			Cards.sort( Compare );
+			Cards.length = Math.min( 5, Cards.length );
+			return Cards;
+		}
+	
+	
+		function GetStraightFlushHand(Cards)
+		{
+			function GetStraightHandOfSuit(IsSuitFunc)
+			{
+				const Hearts = Cards.filter( c => IsSuitFunc(c) );
+				if ( Hearts.length < 5 )
+					return false;
+	
+				const StraightHand = GetStraightHand(Hearts);
+				return StraightHand;
+			}
+			
+			const Hearts = GetStraightHandOfSuit( IsHeart );
+			const Spades = GetStraightHandOfSuit( IsSpade );
+			const Clubs = GetStraightHandOfSuit( IsClub );
+			const Diamonds = GetStraightHandOfSuit( IsDiamond );
+			if ( Hearts )	return Hearts;
+			if ( Spades )	return Spades;
+			if ( Clubs )	return Clubs;
+			if ( Diamonds )	return Diamonds;
+			return false;
+		}
+	
+	
+		function GetFlushHand(Cards)
+		{
+			const Hearts = Cards.filter( c => IsHeart(c) );
+			const Spades = Cards.filter( c => IsSpade(c) );
+			const Clubs = Cards.filter( c => IsClub(c) );
+			const Diamonds = Cards.filter( c => IsDiamond(c) );
+			if ( Hearts.length >= 5 )
+				return GetSortedFiveCards(Hearts);
+			if ( Spades.length >= 5 )
+				return GetSortedFiveCards(Spades);
+			if ( Clubs.length >= 5 )
+				return GetSortedFiveCards(Clubs);
+			if ( Diamonds.length >= 5 )
+				return GetSortedFiveCards(Diamonds);
+			return false;
+		}
+	
+		function GetStraightHand(Cards)
+		{
+			const Values = Cards.map( GetCardValue );
+			Values.sort();
+			//	remove duplicates
+			const UniqueValues = [...new Set(Values)];
+			if ( UniqueValues.length < 5 )
+				return false;
+				
+			function IsSequence(Array)
+			{
+				for ( let i=1;	i<Array.length;	i++ )
+					if ( Array[i-1] != Array[i]-1 )
+						return false;
+				return true;
+			}
+			
+			//	for each number, count up 5 in a row
+			//	in reverse to get best result first
+			for ( let i=4;	i<UniqueValues.length;	i++ )
+			{
+				let Set = UniqueValues.slice( i-4, i );
+				if ( Set.length != 5 )	throw "Programmer error";
+				if ( !IsSequence(Set) )
+					continue;
+	
+				//	grab cards from original bunch that match this set
+				function GetStraightCard(CardValue)
+				{
+					function MatchCardValue(Card)
+					{
+						return GetCardValue(Card) == CardValue;
+					}
+					const Card = Cards.find( MatchCardValue );
+					if ( Card === undefined )	throw "Failed to match this card in original bunch";
+					return Card;
+				}
+				const StraightCards = Set.map( GetStraightCard );
+				return GetSortedFiveCards(StraightCards);
+			}
+			return false;
+		}
+	
+	
+		function GetFullHouseHand(Cards)
+		{
+			//	for any 5, is there 3 & 2...
+			const Threes = [];
+			const Pairs = [];
+			const Values = Cards.map( GetCardValue );
+			for ( let v=2;	v<=14;	v++ )
+			{
+				const MatchingValues = Values.filter( c => c==v );
+				if ( MatchingValues.length >= 3 )
+					Threes.push( v );
+				if ( MatchingValues.length == 2 )
+					Pairs.push( v );
+			}
+			if ( Threes.length == 0 || Pairs.length == 0 )
+				return false;
+			Threes.sort();
+			Pairs.sort();
+			
+			//	pick any 3 cards matching Threes[0]
+			//	pick any 2 cards matching Pairs[0]
+			
+			return true;
+		}
+	
+		//	returns high card
+		function IsFourOfAKind(Cards)
+		{
+			const Values = Cards.map( GetCardValue );
+			for ( let v=2;	v<=14;	v++ )
+			{
+				const MatchingValues = Values.filter( c => c==v );
+				if ( MatchingValues.length > 4 )	throw "Invalid case";
+				if ( MatchingValues.length == 4 )
+					return true;
+			}
+			return false;
+		}
+	
+		//	returns high card
+		function IsThreeOfAKind(Cards)
+		{
+			//	7 cards, so possibly more than one case, we'll need to return highest at some point
+			const Threes = [];
+			const Values = Cards.map( GetCardValue );
+			for ( let v=2;	v<=14;	v++ )
+			{
+				const MatchingValues = Values.filter( c => c==v );
+				if ( MatchingValues.length >= 3 )
+					Threes.push( v );
+			}
+			if ( Threes.length == 0 )
+				return false;
+			return true;
+		}
+	
+		//	returns high card
+		function IsTwoPair(Cards)
+		{
+			const Pairs = [];
+			const Values = Cards.map( GetCardValue );
+			for ( let v=2;	v<=14;	v++ )
+			{
+				const MatchingValues = Values.filter( c => c==v );
+				if ( MatchingValues.length >= 2 )
+					Pairs.push( v );
+			}
+			if ( Pairs.length < 2 )
+				return false;
+			return true;
+		}
+	
+		//	returns high card
+		function IsOnePair(Cards)
+		{
+			const Pairs = [];
+			const Values = Cards.map( GetCardValue );
+			for ( let v=2;	v<=14;	v++ )
+			{
+				const MatchingValues = Values.filter( c => c==v );
+				if ( MatchingValues.length >= 2 )
+				Pairs.push( v );
+			}
+			if ( Pairs.length == 0 )
+				return false;
+			
+			//	get pairs with highest value
+			//	now grab any card from the best pair set
+			Pairs.sort();
+			const MatchingCards = Cards.filter( c => GetCardValue(c) == Pairs[0] );
+			return MatchingCards[0];
+		}
+	
+		function GetHighCard(Cards)
+		{
+			const Values = Cards.map( GetCardValue );
+			const BestIndex = 0;
+			for ( let i=0;	i<Values.length;	i++ )
+				if ( Values[i] > Values[BestIndex] )
+					BestIndex = i;
+			return Cards[BestIndex];
+		}
+	
+		function CompareHands(HandA,HandB)
+		{
+			function Compare(CardFunc)
+			{
+				const a = CardFunc(HandA.Cards);
+				const b = CardFunc(HandB.Cards);
+				if ( a!==false && b===false )
+					return -1;
+				if ( a===false && b!==false )
+					return 1;
+				if ( a!==false && b!==false )
+				{
+					const HighA = GetCardValue(a);
+					const HighB = GetCardValue(b);
+					if ( HighA > HighB )
+						return -1;
+					if ( HighB > HighA )
+						return 1;
+				}
+				//	tie
+				return 0;
+			}
+			
+			const StraightFlush = Compare(IsStraightFlush);
+			if ( StraightFlush != 0 )
+				return StraightFlush;
+				
+			const Four = Compare(IsFourOfAKind);
+			if ( Four != 0 )
+				return Four;
+				
+			const FullHouse = Compare(IsFullHouse);
+			if ( FullHouse != 0 )
+				return FullHouse;
+				
+			const Flush = Compare(IsFlush);
+			if ( Flush != 0 )
+				return Flush;
+				
+			const Straight = Compare(IsStraight);
+			if ( Straight != 0 )
+				return Straight;
+				
+			const Three = Compare(IsThreeOfAKind);
+			if ( Three != 0 )
+				return Three;
+				
+			const Pair2 = Compare(IsTwoPair);
+			if ( Pair2 != 0 )
+				return Pair2;
+			
+			const Pair = Compare(IsOnePair);
+			if ( Pair != 0 )
+				return Pair;
+
+			//	test high card
+			const HighA = GetCardValue( GetHighCard( HandA.Cards ) );
+			const HighB = GetCardValue( GetHighCard( HandB.Cards ) );
+			if ( HighA > HighB )	return -1;
+			if ( HighB > HighA )	return 1;
+			return 0;
+		}
+	
+		function GetWinner(State)
+		{
+			//	get cards of those who havent folded
+			let Hands = [];
+			
+			function PushHand(Player,Bet,Card0,Card1)
+			{
+				if ( Bet == BET_FOLD )
+					return;
+				let Cards = [ Card0, Card1, State.RiverCard0, State.RiverCard1, State.RiverCard2, State.RiverCard3, State.RiverCard4 ];
+				const Hand = {};
+				Hand.Player = Player;
+				Hand.Cards = Cards;
+				Hands.push(Hand);
+			}
+			PushHand( 1, State.P1Bet, State.P1Card0, State.P1Card1 );
+			PushHand( 2, State.P2Bet, State.P2Card0, State.P2Card1 );
+			PushHand( 3, State.P3Bet, State.P3Card0, State.P3Card1 );
+			
+			if ( Hands.length == 0 )
+				throw "Everyone folded, unexpected state";
+			
+			Hands.sort( CompareHands );
+			//	todo: check for everyone using river cards & tie
+			return Hands[0];
+		}
+	
+		async function ShowWinner(State)
+		{
+			const Winner = GetWinner(State);
+			
+			const Prize = State.Pot + Math.max(0,State.P1Bet) + Math.max(0,State.P2Bet) + Math.max(0,State.P3Bet);
+			
+			const StateElement = document.getElementById('GameResult');
+			StateElement.innerHTML = 'Winner is ' + Winner.Player + "<br/>";
+			StateElement.innerHTML += 'Wins $' + Prize + "<br/>";
+
+			await WaitForSync();
 		}
 	
 		function RevealNextCard(State)
@@ -222,8 +555,8 @@
 			await UpdateRound(State);
 			await WaitForSync(State);
 
-			//	winner
-			console.log("Winner!");
+			//	finished
+			return State;
 		}
 	
 		function StateNeedsBet(State)
@@ -325,7 +658,20 @@
 			FlushBets(State);
 		}
 	
-		UpdateGame().then(console.log).catch(console.error);
+	
+		async function Bootup()
+		{
+			const Contest = undefined;
+			while ( true )	//	( contest.hasplayers )
+			{
+				const EndingState = await UpdateGame( Contest );
+				//	remove players that have 0 cash
+				//	announce winner
+				await ShowWinner(EndingState);
+			}
+		}
+	
+		Bootup().then(console.log).catch(console.error);
 	
 		/*
 		async function Bootup()
