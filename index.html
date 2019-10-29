@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+	<link rel="stylesheet" type="text/css" href="Editor/win95.css" />
+	<link rel="stylesheet" type="text/css" href="Web/Poker.css" />
+
+	<style>
+	</style>
+
+	<script src='PopEngineCommon/PopWebApi.js'></script>
+	<script src='PopEngineCommon/PopApi.js'></script>
+	<script src='PopEngineCommon/PopWebOpenglApi.js'></script>
+	<script src='PopEngineCommon/PopWebGuiApi.js'></script>
+	<script src='PopEngineCommon/PopWebImageApi.js'></script>
+	<script src='PopEngineCommon/PopWebSocketApi.js'></script>
+	<script src='PopEngineCommon/PopWebXrApi.js'></script>
+
+</head>
+<body>
+	
+	<div id="Variables">
+		<h1>Variables</h1>
+		<!-- variables -->
+		<div id="Pot">0</div>
+		<div id="RiverCard0">0</div>
+		<div id="RiverCard1">0</div>
+		<div id="RiverCard2">0</div>
+		<div id="RiverCard3">0</div>
+		<div id="RiverCard4">0</div>
+		<div id="P1Card0">110</div>
+		<div id="P1Card1">120</div>
+		<div id="P1Bet">0</div>
+		<div id="P2Card0">130</div>
+		<div id="P2Card1">140</div>
+		<div id="P2Bet">0</div>
+		<div id="P3Card0">20</div>
+		<div id="P3Card1">21</div>
+		<div id="P3Bet">0</div>
+		
+	</div>
+	
+	<div id="Ux">
+		<div>Continue <input type=Button id="Ux_Continue" value="Continue"/></div>
+	</div>
+	
+	<script>
+		function SetInnerTextAttr(Element)
+		{
+			//console.log("SetInnerTextAttr",Element);
+			Element.setAttribute('innerText',Element.innerText);
+		}
+	
+		function SetVariable_InnerTextAttr()
+		{
+			const Vars = document.getElementById("Variables");
+			Array.from(Vars.children).forEach( SetInnerTextAttr );
+		}
+		SetVariable_InnerTextAttr();
+		
+		
+		function OnStateChanged(State)
+		{
+			function SetVariable(Key)
+			{
+				const Value = State[Key];
+				const Element = document.getElementById(Key);
+				if ( !Element )
+					return;
+				Element.innerText = Value;
+			}
+			Object.keys(State).forEach( SetVariable );
+			SetVariable_InnerTextAttr();
+		}
+	
+		function GetAllCards()
+		{
+			const Cards = [];
+			//	numbers are 2-Ace(14)
+			//	+ suit 1-4 (no zero for error testing)
+			const Values = [2,3,4,5,6,7,8,9,10,11,12,13,14];
+			const Suits = [1,2,3,4];
+			for ( let v in Values )
+			{
+				for ( let s in Suits )
+				{
+					const Card = (Values[v] * 10) + Suits[s];
+					Cards.push(Card);
+				}
+			}
+			//console.log(Cards);
+			return Cards;
+		}
+	
+		const BET_FOLD = -1;
+		const SMALL_BLIND = 5;
+		const BIG_BLIND = SMALL_BLIND*2;
+
+		function PokerGameState()
+		{
+			this.CardDeck = GetAllCards();
+			this.PopCard = function()
+			{
+				const Index = Math.floor( Math.random() * this.CardDeck.length );
+				const Popped = this.CardDeck.splice( Index, 1 );
+				return Popped;
+			}
+			
+			this.GetHighestBet = function()
+			{
+				let Bet = 0;
+				Bet = Math.max( Bet, this.P1Bet );
+				Bet = Math.max( Bet, this.P2Bet );
+				Bet = Math.max( Bet, this.P2Bet );
+				return Bet;
+			}
+			
+			this.Pot = 0;
+			this.P1Bet = SMALL_BLIND;
+			this.P2Bet = BIG_BLIND;
+			this.P3Bet = 0;
+			this.RiverCard0 = 0;
+			this.RiverCard1 = 0;
+			this.RiverCard2 = 0;
+			this.RiverCard3 = 0;
+			this.RiverCard4 = 0;
+			this.P1Card0 = 0;
+			this.P1Card1 = 0;
+			this.P2Card0 = 0;
+			this.P2Card1 = 0;
+			this.P3Card0 = 0;
+			this.P3Card1 = 0;
+		}
+	
+		function CreatePromise()
+		{
+			const Prom = {};
+			function SetResolveReject(Resolve,Reject)
+			{
+				Prom.Resolve = Resolve;
+				Prom.Reject = Reject;
+			}
+			const NewPromise = new Promise(SetResolveReject);
+			NewPromise.Resolve = Prom.Resolve;
+			NewPromise.Reject = Prom.Reject;
+			return NewPromise;
+		}
+	
+		async function WaitForSync(State)
+		{
+			const ContinueButton = document.getElementById('Ux_Continue');
+			const ContinuePromise = CreatePromise();
+			ContinueButton.onclick = function()
+			{
+				ContinuePromise.Resolve();
+				ContinueButton.onclick = undefined;
+			}
+			await ContinuePromise;
+		}
+	
+		function RevealNextCard(State)
+		{
+			//	havent shown player cards
+			if ( State.P1Card0 == 0 )
+			{
+				console.log("Deal");
+				State.P1Card0 = State.PopCard();
+				State.P1Card1 = State.PopCard();
+				State.P2Card0 = State.PopCard();
+				State.P2Card1 = State.PopCard();
+				State.P3Card0 = State.PopCard();
+				State.P3Card1 = State.PopCard();
+				return;
+			}
+			
+			if ( State.RiverCard0 == 0 )
+			{
+				console.log("Flop");
+				State.RiverCard0 = State.PopCard();
+				State.RiverCard1 = State.PopCard();
+				State.RiverCard2 = State.PopCard();
+				return;
+			}
+			
+			if ( State.RiverCard3 == 0 )
+			{
+				console.log("Turn");
+				State.RiverCard3 = State.PopCard();
+				return;
+			}
+			
+			if ( State.RiverCard4 == 0 )
+			{
+				console.log("River");
+				State.RiverCard4 = State.PopCard();
+				return;
+			}
+
+			throw "No more cards to turn";
+		}
+	
+		async function UpdateGame()
+		{
+			const State = new PokerGameState();
+			OnStateChanged( State );
+
+			await WaitForSync(State);
+			
+			//	preflop
+			await UpdateRound(State);
+			await WaitForSync(State);
+			
+			//	flop
+			await UpdateRound(State);
+			await WaitForSync(State);
+
+			//	turn
+			await UpdateRound(State);
+			await WaitForSync(State);
+
+			//	river
+			await UpdateRound(State);
+			await WaitForSync(State);
+
+			//	winner
+			console.log("Winner!");
+		}
+	
+		function StateNeedsBet(State)
+		{
+			//	if any player is less bet than others and not folded
+			let Bets = [State.P1Bet,State.P2Bet,State.P3Bet];
+			function BetNotFold(Bet)	{	return Bet!=-1;	}
+			Bets = Bets.filter( BetNotFold );
+			if ( Bets.length == 0 )
+				throw "Nobody valid for betting";
+			
+			//	only one player left
+			if ( Bets.length == 1 )
+				return false;
+				
+			//	all bets are same!
+			const BetsAreSame = Bets.every( b => b==Bets[0] );
+			return !BetsAreSame;
+		}
+	
+		async function GetPlayerAction(State,PXBet)
+		{
+			//const Actions = ['FOLD','CALL','RAISE'];
+			const Actions = ['CALL','RAISE'];
+			
+			//	already folded
+			if ( State[PXBet] == BET_FOLD )
+				return 'FOLD';//Actions[0];
+	
+			//	pick random action
+			//	fold, call, raise
+			const ActionIndex = Math.floor(Math.random() * Actions.length);
+			console.log(PXBet+" "+Actions[ActionIndex]+"s");
+			return Actions[ActionIndex];
+		}
+		async function GetPlayer1Action(State,PXBet)	{	return await GetPlayerAction(State,'P1Bet');	}
+		async function GetPlayer2Action(State,PXBet)	{	return await GetPlayerAction(State,'P2Bet');	}
+		async function GetPlayer3Action(State,PXBet)	{	return await GetPlayerAction(State,'P3Bet');	}
+
+
+		function ApplyPlayerAction(State,Action,PXBet)
+		{
+			if ( Action == 'FOLD' )
+			{
+				//	already folded
+				if ( State[PXBet] == BET_FOLD )
+					return;
+				State.Pot += State[PXBet];
+				State[PXBet] = BET_FOLD;
+				return;
+			}
+			
+			if ( Action == 'CALL' )
+			{
+				//	steal from player
+				State[PXBet] = State.GetHighestBet();
+				return;
+			}
+			
+			if ( Action == 'RAISE' )
+			{
+				//	steal from player
+				State[PXBet] = State.GetHighestBet() + BIG_BLIND;
+				return;
+			}
+		}
+		function ApplyPlayer1Action(State,Action)	{	return ApplyPlayerAction(State,Action,'P1Bet');	}
+		function ApplyPlayer2Action(State,Action)	{	return ApplyPlayerAction(State,Action,'P2Bet');	}
+		function ApplyPlayer3Action(State,Action)	{	return ApplyPlayerAction(State,Action,'P3Bet');	}
+
+		function FlushBets(State)
+		{
+			State.Pot += Math.max( 0, State.P1Bet );
+			State.Pot += Math.max( 0, State.P2Bet );
+			State.Pot += Math.max( 0, State.P3Bet );
+			State.P1Bet = Math.min( State.P1Bet, 0 );
+			State.P2Bet = Math.min( State.P1Bet, 0 );
+			State.P3Bet = Math.min( State.P1Bet, 0 );
+		}
+		
+		async function UpdateRound(State)
+		{
+			RevealNextCard(State);
+			OnStateChanged(State);
+			do
+			{
+				const P1Action = await GetPlayer1Action(State);
+				ApplyPlayer1Action(State,P1Action);
+				OnStateChanged(State);
+				const P2Action = await GetPlayer2Action(State);
+				ApplyPlayer2Action(State,P2Action);
+				OnStateChanged(State);
+				const P3Action = await GetPlayer3Action(State);
+				ApplyPlayer3Action(State,P3Action);
+				OnStateChanged(State);
+			}
+			while ( StateNeedsBet(State) )
+			
+			FlushBets(State);
+		}
+	
+		UpdateGame().then(console.log).catch(console.error);
+	
+		/*
+		async function Bootup()
+		{
+			const Source = await Pop.LoadFileAsStringAsync('bootup.js');
+			Pop.CompileAndRun( Source, 'bootup.js' );
+		}
+
+		Bootup().then( e=>Pop.Debug("Finished!",e) ).catch( console.error );
+	*/
+	</script>
+	
+</body>
+

@@ -1,0 +1,73 @@
+/*
+body
+{
+	
+	background: repeating-linear-gradient(
+	45deg,
+	#88c728,
+	#88c728 5vmin,
+	#8dd028 5vmin,
+	#8dd028 10vmin
+	);
+	background-attachment: fixed;
+}
+*/
+#Variables div
+{
+	margin-bottom:	0.5em;
+	width:			99em;
+}
+
+/* auto label */
+#Variables div:before
+{
+	content:	attr(id);
+	background:	yellow;
+	width:		10em;
+	display:	inline-block;
+	text-align:	right;
+	margin-right:	1em;
+}
+
+#Variables div[id*="Card"]:after
+{
+	content:	"";
+	background:	lime;
+	width:		10em;
+	display:	inline-block;
+	margin-left:	1em;
+}
+
+#Variables div[id*="Bet"]:after
+{
+	content:	"";
+	background:	grey;
+	width:		10em;
+	display:	inline-block;
+	margin-left:	1em;
+}
+
+#Variables div[innerText$="1"]:after	{	content:	"HEART " attr(innerText);	}
+#Variables div[innerText$="2"]:after	{	content:	"SPADE " attr(innerText);	}
+#Variables div[innerText$="3"]:after	{	content:	"DIAMOND " attr(innerText);	}
+#Variables div[innerText$="4"]:after	{	content:	"CLUB " attr(innerText);	}
+
+#Variables div:not([id*="Card"]):after
+{
+	content:	"";
+}
+
+/*#Variables div:not([id*="Bet"]):after*/
+#Variables div[innerText="-1"]:after
+{
+	content:	"FOLD";
+	background:	#fcc;
+}
+
+/*
+#Variables div[innerText^="11"]:after	{	content:	"JACK " attr(innerText);	}
+#Variables div[innerText^="12"]:after	{	content:	"QUEEN " attr(innerText);	}
+#Variables div[innerText^="13"]:after	{	content:	"KING " attr(innerText);	}
+#Variables div[innerText^="14"]:after	{	content:	"ACE " attr(innerText);	}
+*/
+
