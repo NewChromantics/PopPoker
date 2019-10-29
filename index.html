@@ -110,7 +110,7 @@
 			{
 				const Index = Math.floor( Math.random() * this.CardDeck.length );
 				const Popped = this.CardDeck.splice( Index, 1 );
-				return Popped;
+				return Popped[0];
 			}
 			
 			this.GetHighestBet = function()
@@ -153,6 +153,15 @@
 			return NewPromise;
 		}
 	
+		function CompareAscending(a,b)
+		{
+			return a - b;
+		}
+	
+		function CompareDescending(a,b)
+		{
+			return b-a;
+		}
 	
 		async function WaitForSync(State)
 		{
@@ -184,6 +193,17 @@
 		function IsSpade(Card)		{	return GetCardSuit(Card) == SUIT_SPADE;		}
 		function IsDiamond(Card)	{	return GetCardSuit(Card) == SUIT_DIAMOND;		}
 
+		
+		function GetCardMaxValue()
+		{
+			return 14;	//	10, 11J, 12Q, 13K, 14ace
+		}
+	
+		function GetCardMinValue()
+		{
+			return 2;
+		}
+	
 		function GetSortedFiveCards(Cards)
 		{
 			function Compare(a,b)
@@ -199,6 +219,30 @@
 			return Cards;
 		}
 	
+		function GetNCardsWithValue(Cards,Value,Limit)
+		{
+			const VCards = Cards.filter( c => GetCardValue(c) == Value );
+			VCards.length = Math.min( Limit, VCards.length );
+			return VCards;
+		}
+	
+		function GetCardToString(Card)
+		{
+			const Suits = ["x","&hearts;","&spades;","&diams;","&clubs;"];
+			const Suit = Suits[GetCardSuit(Card)];
+			let Value = GetCardValue(Card);
+			if ( Value == 11 )	Value = "Jack";
+			if ( Value == 12 )	Value = "Queen";
+			if ( Value == 13 )	Value = "King";
+			if ( Value == 14 )	Value = "Ace";
+			return Suit + Value;
+		}
+	
+		function GetHandToString(Cards)
+		{
+			const Names = Cards.map( GetCardToString );
+			return Names.join(', ');
+		}
 	
 		function GetStraightFlushHand(Cards)
 		{
@@ -244,7 +288,7 @@
 		function GetStraightHand(Cards)
 		{
 			const Values = Cards.map( GetCardValue );
-			Values.sort();
+			Values.sort(CompareDescending);
 			//	remove duplicates
 			const UniqueValues = [...new Set(Values)];
 			if ( UniqueValues.length < 5 )
@@ -262,7 +306,7 @@
 			//	in reverse to get best result first
 			for ( let i=4;	i<UniqueValues.length;	i++ )
 			{
-				let Set = UniqueValues.slice( i-4, i );
+				let Set = UniqueValues.slice( i-4, i+1 );
 				if ( Set.length != 5 )	throw "Programmer error";
 				if ( !IsSequence(Set) )
 					continue;
@@ -301,48 +345,85 @@
 			}
 			if ( Threes.length == 0 || Pairs.length == 0 )
 				return false;
-			Threes.sort();
-			Pairs.sort();
+			if ( Threes.length > 1 )
+				Threes.sort(CompareDescending);
+			if ( Pairs.length > 1 )
+				Pairs.sort(CompareDescending);
 			
 			//	pick any 3 cards matching Threes[0]
 			//	pick any 2 cards matching Pairs[0]
+			const ThreeCards = GetNCardsWithValue( Cards, Threes[0], 3 );
+			const PairCards = GetNCardsWithValue( Cards, Pairs[0], 2 );
 			
-			return true;
+			const FullHouseCards = ThreeCards.concat( PairCards );
+			return GetSortedFiveCards( FullHouseCards );
 		}
 	
-		//	returns high card
-		function IsFourOfAKind(Cards)
+		function GetFourOfAKindHand(Cards)
 		{
 			const Values = Cards.map( GetCardValue );
-			for ( let v=2;	v<=14;	v++ )
+			for ( let v=GetCardMaxValue();	v>=GetCardMinValue();	v-- )
 			{
 				const MatchingValues = Values.filter( c => c==v );
-				if ( MatchingValues.length > 4 )	throw "Invalid case";
-				if ( MatchingValues.length == 4 )
-					return true;
+				if ( MatchingValues.length > 4 )
+					throw "Invalid case, >4 four of a kind";
+				if ( MatchingValues.length < 4 )
+					continue;
+				
+				//	grab 4 cards with this value
+				const Hand = GetNCardsWithValue( Cards, v, 4 );
+				return Hand;
 			}
 			return false;
 		}
 	
-		//	returns high card
-		function IsThreeOfAKind(Cards)
+	
+		function GetThreeOfAKindHand(Cards)
 		{
-			//	7 cards, so possibly more than one case, we'll need to return highest at some point
-			const Threes = [];
 			const Values = Cards.map( GetCardValue );
-			for ( let v=2;	v<=14;	v++ )
+			for ( let v=GetCardMaxValue();	v>=GetCardMinValue();	v-- )
 			{
 				const MatchingValues = Values.filter( c => c==v );
-				if ( MatchingValues.length >= 3 )
-					Threes.push( v );
+				if ( MatchingValues.length < 3 )
+					continue;
+				
+				//	grab 3 cards with this value
+				const Hand = GetNCardsWithValue( Cards, v, 3 );
+				return Hand;
 			}
-			if ( Threes.length == 0 )
-				return false;
-			return true;
+			return false;
 		}
 	
-		//	returns high card
-		function IsTwoPair(Cards)
+		function GetTwoPairHand(Cards)
+		{
+			let PairHi = null;
+			let PairLo = null;
+			const Values = Cards.map( GetCardValue );
+			for ( let v=GetCardMaxValue();	v>=GetCardMinValue();	v-- )
+			{
+				const MatchingValues = Values.filter( c => c==v );
+				if ( MatchingValues.length < 2 )
+					continue;
+				if ( PairHi === null )
+				{
+					PairHi = v;
+					continue;
+				}
+				if ( PairLo === null )
+				{
+					PairLo = v;
+					break;
+				}
+			}
+			if ( PairLo === null )
+				return false;
+
+			const HandHi = GetNCardsWithValue( Cards, PairHi, 2 );
+			const HandLo = GetNCardsWithValue( Cards, PairLo, 2 );
+			return HandHi.concat( HandLo );
+		}
+	
+		function GetOnePairHand(Cards)
 		{
 			const Pairs = [];
 			const Values = Cards.map( GetCardValue );
@@ -352,56 +433,89 @@
 				if ( MatchingValues.length >= 2 )
 					Pairs.push( v );
 			}
-			if ( Pairs.length < 2 )
-				return false;
-			return true;
-		}
-	
-		//	returns high card
-		function IsOnePair(Cards)
-		{
-			const Pairs = [];
-			const Values = Cards.map( GetCardValue );
-			for ( let v=2;	v<=14;	v++ )
-			{
-				const MatchingValues = Values.filter( c => c==v );
-				if ( MatchingValues.length >= 2 )
-				Pairs.push( v );
-			}
 			if ( Pairs.length == 0 )
 				return false;
 			
 			//	get pairs with highest value
 			//	now grab any card from the best pair set
-			Pairs.sort();
-			const MatchingCards = Cards.filter( c => GetCardValue(c) == Pairs[0] );
-			return MatchingCards[0];
+			if ( Pairs.length > 1 )
+				Pairs.sort(CompareDescending);
+			const Hand = GetNCardsWithValue( Cards, Pairs[0], 2 );
+			return Hand;
 		}
 	
-		function GetHighCard(Cards)
+		function GetHighCardHand(Cards)
 		{
 			const Values = Cards.map( GetCardValue );
-			const BestIndex = 0;
+			let BestIndex = 0;
 			for ( let i=0;	i<Values.length;	i++ )
 				if ( Values[i] > Values[BestIndex] )
 					BestIndex = i;
-			return Cards[BestIndex];
+			return [Cards[BestIndex]];
 		}
 	
-		function CompareHands(HandA,HandB)
+		function GetHandScore(Cards)
+		{
+			//	X000 + HighV gives a unique value
+			function GetScore(GetHandFunc,FuncScore)
+			{
+				const Hand = GetHandFunc( Cards );
+				if ( Hand === false )
+					return 0;
+				let Score = FuncScore * 1000;
+				const HighCardValue = GetCardValue(Hand[0]);
+				Score += HighCardValue;
+				return Score;
+			}
+			const GetHandFuncs =
+			[
+			 GetStraightFlushHand,
+			 GetFourOfAKindHand,
+			 GetFullHouseHand,
+			 GetFlushHand,
+			 GetStraightHand,
+			 GetThreeOfAKindHand,
+			 GetTwoPairHand,
+			 GetOnePairHand,
+			 GetHighCardHand
+			];
+			for ( let f=0;	f<GetHandFuncs.length;	f++ )
+			{
+				const FuncScore = GetHandFuncs.length - f;
+				const Score = GetScore( GetHandFuncs[f], FuncScore );
+				if ( Score != 0 )
+					return Score;
+			}
+			throw "Shouldn't reach here";
+		}
+	
+	
+		function CompareBestHands(PlayerA,PlayerB)
+		{
+			//	need to re-classify these hands, oops. maybe need a score/id for type
+			const ScoreA = GetHandScore( PlayerA.BestHand );
+			const ScoreB = GetHandScore( PlayerB.BestHand );
+			if ( ScoreA > ScoreB )
+				return -1;
+			if ( ScoreB > ScoreA )
+				return 1;
+			return 0;
+		}
+	
+		function CompareHands(PlayerA,PlayerB)
 		{
 			function Compare(CardFunc)
 			{
-				const a = CardFunc(HandA.Cards);
-				const b = CardFunc(HandB.Cards);
+				const a = CardFunc(PlayerA.Cards);
+				const b = CardFunc(PlayerB.Cards);
 				if ( a!==false && b===false )
 					return -1;
 				if ( a===false && b!==false )
 					return 1;
 				if ( a!==false && b!==false )
 				{
-					const HighA = GetCardValue(a);
-					const HighB = GetCardValue(b);
+					const HighA = GetCardValue(a[0]);
+					const HighB = GetCardValue(b[0]);
 					if ( HighA > HighB )
 						return -1;
 					if ( HighB > HighA )
@@ -411,45 +525,70 @@
 				return 0;
 			}
 			
-			const StraightFlush = Compare(IsStraightFlush);
+			const StraightFlush = Compare( GetStraightFlushHand );
 			if ( StraightFlush != 0 )
 				return StraightFlush;
 				
-			const Four = Compare(IsFourOfAKind);
+			const Four = Compare( GetFourOfAKindHand );
 			if ( Four != 0 )
 				return Four;
 				
-			const FullHouse = Compare(IsFullHouse);
+			const FullHouse = Compare( GetFullHouseHand );
 			if ( FullHouse != 0 )
 				return FullHouse;
 				
-			const Flush = Compare(IsFlush);
+			const Flush = Compare( GetFlushHand );
 			if ( Flush != 0 )
 				return Flush;
 				
-			const Straight = Compare(IsStraight);
+			const Straight = Compare( GetStraightHand );
 			if ( Straight != 0 )
 				return Straight;
 				
-			const Three = Compare(IsThreeOfAKind);
+			const Three = Compare( GetThreeOfAKindHand );
 			if ( Three != 0 )
 				return Three;
 				
-			const Pair2 = Compare(IsTwoPair);
+			const Pair2 = Compare( GetTwoPairHand );
 			if ( Pair2 != 0 )
 				return Pair2;
 			
-			const Pair = Compare(IsOnePair);
+			const Pair = Compare( GetOnePairHand );
 			if ( Pair != 0 )
 				return Pair;
+			
+			const High = Compare( GetHighCardHand );
+			if ( High != 0 )
+				return High;
 
-			//	test high card
-			const HighA = GetCardValue( GetHighCard( HandA.Cards ) );
-			const HighB = GetCardValue( GetHighCard( HandB.Cards ) );
-			if ( HighA > HighB )	return -1;
-			if ( HighB > HighA )	return 1;
 			return 0;
 		}
+	
+		function GetBestHand(Cards)
+		{
+			const GetHandFuncs =
+			[
+			 GetStraightFlushHand,
+			 GetFourOfAKindHand,
+			 GetFullHouseHand,
+			 GetFlushHand,
+			 GetStraightHand,
+			 GetThreeOfAKindHand,
+			 GetTwoPairHand,
+			 GetOnePairHand,
+			 GetHighCardHand
+			];
+			for ( let f=0;	f<GetHandFuncs.length;	f++ )
+			{
+				const GetHandFunc = GetHandFuncs[f];
+				const Hand = GetHandFunc( Cards );
+				if ( Hand === false )
+					continue;
+				return Hand;
+			}
+			throw "Shouldn't reach here, GetHighCardHand should always give a result";
+		}
+	
 	
 		function GetWinner(State)
 		{
@@ -464,6 +603,7 @@
 				const Hand = {};
 				Hand.Player = Player;
 				Hand.Cards = Cards;
+				Hand.BestHand = GetBestHand(Cards);
 				Hands.push(Hand);
 			}
 			PushHand( 1, State.P1Bet, State.P1Card0, State.P1Card1 );
@@ -473,7 +613,7 @@
 			if ( Hands.length == 0 )
 				throw "Everyone folded, unexpected state";
 			
-			Hands.sort( CompareHands );
+			Hands.sort( CompareBestHands );
 			//	todo: check for everyone using river cards & tie
 			return Hands[0];
 		}
@@ -486,6 +626,7 @@
 			
 			const StateElement = document.getElementById('GameResult');
 			StateElement.innerHTML = 'Winner is ' + Winner.Player + "<br/>";
+			StateElement.innerHTML += 'With ' + GetHandToString(Winner.BestHand) + "<br/>";
 			StateElement.innerHTML += 'Wins $' + Prize + "<br/>";
 
 			await WaitForSync();
